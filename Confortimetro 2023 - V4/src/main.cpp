@@ -20,29 +20,30 @@
 
 #define timeoutUntillResetSeconds 60
 
+//----------------------- GOOGLE PLANILHAS ---------------------//
 String GOOGLE_SCRIPT_ID = googleScriptID;
 String GOOGLE_SHEET_NAME = sheetName;
 const int httpsPort = 443;
 WiFiClientSecure client;
 #define button 27
 
+//---------------------------- FREERTOS -----------------//
 TaskHandle_t Task1 = NULL; //Leitura dos ADCs
 TaskHandle_t Task2 = NULL; //Gravação PEN-DRIVE
 TaskHandle_t Task3 = NULL; //Atualização OLED
 TaskHandle_t Task4 = NULL; //Wifi
 
-#define num_sensor_Tar 39
-#define num_sensor_Tglobo 35
-#define num_sensor_Tquente 36
-#define num_sensor_HR 32
+#define num_sensor_Tar 39 //temperatura do ar
+#define num_sensor_Tglobo 35 //temperatura do globo
+#define num_sensor_Tquente 36 //temperatura sensor quente
+#define num_sensor_HR 32 //umidade do ar
 
+//--------------------- ADC ESP -------------------//
 int read_raw;
-esp_adc_cal_characteristics_t adc1_chars;
+esp_adc_cal_characteristics_t adc1_chars; 
 esp_adc_cal_characteristics_t adc_cal;
 
-int cont = 0;
-int reset_count = 0;
-Ch376msc flashDrive(Serial2);
+//----------------------------- DISPLAY ---------------------------//
 
 /* Uncomment the initialize the I2C address , uncomment only one, If you get a totally blank screen try the other*/
 #define i2c_Address 0x3c //initialize with the I2C addr 0x3C Typically eBay OLED's
@@ -53,30 +54,32 @@ Ch376msc flashDrive(Serial2);
 #define LED_pen_drive 13
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-//----------------------- Pen drive --------------------------------------------
+//----------------------- Pen drive --------------------------------------------//
+Ch376msc flashDrive(Serial2);
+int reset_count = 0;
 int conseguiu_abrir_arquivo, estado_pen_drive_anterior, estado_pen_drive_agora;
-double tempo_anterior_teste_pendrive;
 int cont_gravacao = 0;
 String nome_arquivo;
 String dataString = "";
-byte computerByte;           //used to store data coming from the computer
 byte USB_Byte;               //used to store data coming from the USB stick
 int pino_LED_pendrive = 13;                //the LED is connected to digital pin 
 int timeOut = 2000;          //TimeOut is 2 seconds. This is the amount of time you wish to wait for a response from the CH376S module.
 #define Debug_Pen_Drive 1 // 1 printa infos pen drive,   0 não printa nada
-String Print_Pen_Drive_Short = "nao";
-         
-bool flagDatalog = true; 
-bool flagOLED = false; 
-bool flagPost = false; 
-bool firstsave = true; 
-bool failed_save = false; 
-bool firstPost = true;
-String logCheck = ""; 
 
+//------------------- FLAGS -------------------------------------------//     
+bool flagDatalog = true; //Flag para liberar o armazenamento de dados no pendrive
+bool flagOLED = false; //Flag para liberar a atualização do Display
+bool flagPost = false; //Flag para liberar o post de dados nas planilhas do google
+bool firstsave = true; //Flag para indicar o primeiro salvamento no pendrive (controle de nome de arquivo)
+bool failed_save = false; //Flag para controle de funcionamento do pendrive
+bool firstPost = true; //Flag para indicar o primeiro salvamento na planilha
+String logCheck = ""; //String para indicar funcionamento do pendrive
+
+//-------------------- RTC ------------------------------//
 RTC_DS3231 rtc;
 String dia,mes,ano,hora,minuto,segundo;
 
+//------------------------ VARIÁVEIS GERAIS --------------------//
 int num_leituras_media = 100;
 float a[10], b[10], c[10], d[10], e[10], f[10];
 float av, bv, cv, dv, ev, min_delta, max_delta;
@@ -87,6 +90,8 @@ float soma_Tar_gravacao = 0, soma_Tglobo_gravacao = 0,soma_Veloc_gravacao = 0,so
 int leituras_gravacao = 0, leituras_OLED=0;
 char adat[]="Vivamus nec nisl molestie, blandit diam vel, varius mi. Fusce luctus cursus sapien in vulputate.\n";
 char adat2[] = "000000000000";
+
+//--------------------- DECLARAÇÃO DE FUNÇÕES ------------------//
 void setup_display();
 double Calibrar_tensao(double tensao, int canal);
 double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao);
@@ -120,7 +125,8 @@ void printCommandHeader(String header);
 void Atualiza_Nome_Arquivo();
 void oled();
 
-//Interrupções de tempo
+//---------------------Interrupções de tempo-------------------//
+
 void inicialize_timers()  //timer for interruptions - esp32u 40Mhz
 {
   void IRAM_ATTR data_log();
@@ -146,6 +152,7 @@ void inicialize_timers()  //timer for interruptions - esp32u 40Mhz
   timerAlarmWrite(status_timer, 600000, true); //change middle number to change the interruption timer 10000 = 1s
   timerAlarmEnable(status_timer);
 }
+
 void IRAM_ATTR data_log(){
   flagDatalog = true; 
 }
@@ -155,6 +162,8 @@ void IRAM_ATTR oled_update(){
 void IRAM_ATTR post_data(){
   flagPost = true;
 }
+
+//-------------------------TAREFAS FREERTOS----------------------------//
 
 void Task1code( void * pvParameters )
 {
@@ -192,6 +201,7 @@ void Task2code( void * pvParameters )
 {
   while (1)
   {
+    // O QUE ESTÁ COMENTADO FUNCIONA COM MAIS MÓDULOS MAS AS VEZES PERDE CONEXÃO E É NECESSÁRIO REINICIAR
     /*if (flagDatalog){
       Serial.println("task2"); 
       digitalWrite(2,HIGH); 
@@ -264,7 +274,8 @@ void Task2code( void * pvParameters )
   else{
       vTaskDelay(10/ portTICK_PERIOD_MS);
     }*/
-     if (failed_save){
+
+    if (failed_save){
         resetALL();                     //Reset the module
         set_USB_Mode(0x06);             //Set to USB Mode
         //diskConnectionStatus();         //Check that communication with the USB device is possible
@@ -283,7 +294,7 @@ void Task2code( void * pvParameters )
           esp_restart();
     }
     if (flagDatalog){
-      digitalWrite(2, HIGH);
+      digitalWrite(2, HIGH); //LED PARA CONTROLE
       Tar = soma_Tar_gravacao/leituras_gravacao; 
       Tglobo = soma_Tglobo_gravacao/leituras_gravacao;
       Veloc = soma_Veloc_gravacao/leituras_gravacao; 
@@ -463,12 +474,11 @@ void SetupTasks()
                     tskNO_AFFINITY);          /* lets the RTOS decide the core*/ 
 }
 
+//-------------------------- WIFI --------------------//
 bool setupWifi(){
     WiFi.mode(WIFI_STA); //inicia o esp32 no modo estação
     WiFiManager wm; //chama o arquivo principal C++
     bool res;
-      // res = wm.autoConnect(); //AP com nome gerado automaticamente pelo chipID
-      // res = wm.autoConnect("AutoConnectAP"); //AP desprotegido
     res = wm.autoConnect("ESP32Connect","password"); //AP protegido por senha -> uso esse tipo, então nossa rede tem nome "ESP32Connect" e senha "esp32lmpt"
     if(!res)
     {
@@ -481,73 +491,38 @@ bool setupWifi(){
       return res; 
     }
   }
-  /*else{
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_STA);
-    if (IsWAP2Enterprise)
-    {
-      Serial.println("Using WPA2 Enterprise");
-      //esp_wifi_set_mac(ESP_IF_WIFI_STA, &masterCustomMac[0]);
-      Serial.print("MAC >> ");
-      Serial.println(WiFi.macAddress());
-      Serial.printf("Connecting to WiFi: %s ", ssid);
-      //esp_wifi_sta_wpa2_ent_set_ca_cert((uint8_t *)incommon_ca, strlen(incommon_ca) + 1);
-      esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)identity1, strlen(identity1));
-      esp_wifi_sta_wpa2_ent_set_username((uint8_t *)identity1, strlen(identity1));
-      esp_wifi_sta_wpa2_ent_set_password((uint8_t *)password1, strlen(password1));
-      esp_wifi_sta_wpa2_ent_enable();
-      WiFi.begin(ssid);
-    }
-    int timeoutCounter = 0;
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      Serial.println("Conectando");
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      Serial.print(F("."));
-      timeoutCounter++;
-      if (timeoutCounter >= timeoutUntillResetSeconds)
-      { //after 30 seconds timeout - reset board
-        ESP.restart();
-      }
-    }
-    Serial.println(F(" connected!"));
-    Serial.print(F("IP address set: "));
-    Serial.println(WiFi.localIP()); 
-    }
-*/
 
-
+//---------------------SETUP----------------------------//
 void setup() {
-  Serial.begin(9600);
-  Serial2.begin(9600);
-  flashDrive.init();
+  Serial.begin(9600); //Serial para monitor serial
+  Serial2.begin(9600); //Serial para pendrive
+  flashDrive.init(); //inicia o pendrive
 
   esp_adc_cal_value_t adc_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_cal);//Inicializa a estrutura de calibracao
-  int read = analogRead(32);
+  int read = analogRead(32); // necessário chamar pelo menos uma vez, não sei porque mas só funciona assim
    
   //pinMode(32, INPUT_PULLDOWN); 
-  if(!display.begin(0x3C,true)) { // Address 0x3D for 128x64
+  if(!display.begin(0x3C,true)) { // Address 0x3D for 128x64 INICIALIZAÇÃO DO DISPLAY
     Serial.println(F("SSD1306 allocation failed"));
   }
   setup_display();
   delay(40);
   pinMode(2, OUTPUT);
-  pinMode(button, INPUT_PULLDOWN);
-  pinMode(LED_pen_drive, OUTPUT);                                // Define digital pin 13 as an OUTPUT pin - so that we can use it with an LED
+  pinMode(button, INPUT_PULLDOWN); // Botão para resetar as configurações de WIFI do WIFIMANAGER
+  pinMode(LED_pen_drive, OUTPUT);  // Define digital pin 13 as an OUTPUT pin - so that we can use it with an LED
   digitalWrite(LED_pen_drive, LOW);  
-  //attachInterrupt(button, reset_wifi, CHANGE);
-
-  Wire.begin();
-  rtc.begin();
-  //rtc.adjust(DateTime(2023, 10, 30, 12, 00, 00));
+  Wire.begin();//Inicia a biblioteca Wire responsável pelo SPI para o RTC
+  rtc.begin(); //Inicia o RTC
+  //rtc.adjust(DateTime(2023, 10, 30, 12, 00, 00)); //AJUSTE DE DATA (ano, mes, dia, hora, minuto, segundo)
   inicialize_timers();
   delay(15);
-  configure_constants();
+  configure_constants(); //configura as constantes de calibração feitas pelo Prof. Saulo
   setupWifi();
   delay(15);
   SetupTasks();
 }
 
+//-----------------INICIALIZAÇÃO DO DISPLAY------------------//
 void setup_display(){
   display.clearDisplay();
   display.display(); 
@@ -588,6 +563,7 @@ void configure_constants()
   max_delta = 37.5;
 }
 
+//-----------------LEITURA DOS ADCs---------------------------//
 double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao) 
 {
   
@@ -604,9 +580,8 @@ double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao)
     media_leituras /= 100;
     media_leituras = esp_adc_cal_raw_to_voltage(media_leituras, &adc_cal);
     voltage = (media_leituras/1000);
-    //Serial.println(voltage);
     media_leituras_calibrado = ((voltage)-(0.1515*3.3))/(3.3*0.00636);
-    //media_leituras_calibrado = media_leituras_calibrado/(1.0546 - 0.00216*Tar);
+  //media_leituras_calibrado = media_leituras_calibrado/(1.0546 - 0.00216*Tar);
     break;
   case 35:
      for (i = 0; i < n_amostras; i++) 
@@ -616,7 +591,7 @@ double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao)
     media_leituras = esp_adc_cal_raw_to_voltage(media_leituras, &adc_cal);
     voltage = (media_leituras/1000);
     media_leituras_calibrado = Calibrar_tensao(voltage, canal_calibracao);
-    //Serial.println(media_leituras_calibrado);
+
     break;
   case 36:
     for (i = 0; i < n_amostras; i++) 
@@ -626,7 +601,6 @@ double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao)
     media_leituras = esp_adc_cal_raw_to_voltage(media_leituras, &adc_cal);
     voltage = (media_leituras/1000);
     media_leituras_calibrado = Calibrar_tensao(voltage, canal_calibracao);
-    //Serial.println(media_leituras_calibrado);
     break;
   case 39:
      for (i = 0; i < n_amostras; i++) 
@@ -636,7 +610,6 @@ double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao)
     media_leituras = esp_adc_cal_raw_to_voltage(media_leituras, &adc_cal);
     voltage = (media_leituras/1000);
     media_leituras_calibrado = Calibrar_tensao(voltage, canal_calibracao);
-    //Serial.println(media_leituras_calibrado);
   default:
     break;
   }
@@ -647,6 +620,8 @@ double Leitura_Tensao_Canal(int canal, float n_amostras, int canal_calibracao)
 double Calibrar_tensao(double tensao, int canal) 
 {
   double Valor_calibrado;
+
+  //-----------------UTILIZANDO A CONVERSÃO PELA FORMULA---------------------//
   const double beta = 3964.0;
   const double r0 = 15000.0;
   const double t0 = 273.0+ 25.0;
@@ -655,8 +630,8 @@ double Calibrar_tensao(double tensao, int canal)
   double rt = (r0*3.3-tensao*r0)/tensao;
   
   Valor_calibrado = (beta/(log(rt/rx))) - 273.15;
-  //Valor_calibrado = (t-273.0);
 
+  //----------------UTILIZANDO A CALIBRAÇÃO DO PROF. SAULO-------------------//
   //Valor_calibrado = (1/(0.00091+(0.00024*log(rt))))-273.15;
   /*Valor_calibrado =   a[canal]*pow(tensao, 5) +
                        b[canal]*pow(tensao, 4) +
@@ -679,6 +654,7 @@ void update_sums(){
   soma_HR_gravacao += HR; 
 }
 
+//----------------------LEITURA DO RTC----------------------//
 void getTime()
 {
   int int_dia, int_mes, int_segundo, int_minuto, int_hora; 
@@ -709,6 +685,7 @@ void getTime()
  
 }
 
+//----------------------POSTAR DADOS NA PLANILHA DO SHEETS-----------------//
 void PostData()
 {
   String url = ""; 
@@ -743,6 +720,7 @@ void PostData()
 
 }
 
+//------------------FUNÇÕES DO PENDRIVE PROF. SAULO -----------------------//
 void Atualiza_Nome_Arquivo()
 {      
        nome_arquivo = dia + "_" + hora + "-" + minuto + ".CSV";     
